@@ -1,428 +1,340 @@
-# 智慧油田注水开发动态调控系统
+# 古代中医经络穴位数字化与针刺疗效关联分析系统
 
-## 项目概述
-
-本系统是一套完整的智慧油田注水开发动态调控全栈应用，实现油田注水井和采油井的实时数据采集、可视化展示、智能调配优化和告警管理。
-
-### 业务场景
-- **注水井**：300口，每日上报注水量、注水压力、吸水指数
-- **采油井**：500口，每日上报产液量、产油量、含水率、动液面
-- **数据传输**：4G DTU通过MQTT协议上报
-- **核心目标**：基于注采平衡和水驱特征曲线，优化日注水量，减缓含水率上升，最大化产油量
+> 某中医药大学 · 经络数字化研究实验室  
+> **TCM Meridian Digitalization & Acupuncture Efficacy Analysis Platform**
 
 ---
 
-## 技术架构
+## 📋 系统概述
 
-```
-┌─────────────────┐    MQTT    ┌─────────────────┐    HTTP    ┌─────────────────┐
-│  4G DTU 模拟器  │───────────►│  SpringBoot 后端│◄───────────│   Web 前端      │
-│  (Python)       │            │  (Java 17)      │            │  (Canvas+Leaflet)│
-└─────────────────┘            └────────┬────────┘            └─────────────────┘
-                                        │
-                                        ▼
-                              ┌─────────────────┐
-                              │ PostgreSQL      │
-                              │  + PostGIS      │
-                              └─────────────────┘
-```
+本系统在30名志愿者身上布设皮肤电导、红外温度、肌电（EMG）三类传感器，通过BLE网关每100ms实时上报生理信号，结合**随机森林机器学习算法**预测针刺疗效（得气感、疼痛缓解率），进行**经络穴位拓扑网络分析**，并在异常时通过钉钉推送告警。
 
-### 核心技术栈
-
-#### 后端
-- **框架**：Spring Boot 3.2.0
-- **ORM**：Spring Data JPA + Hibernate Spatial 6.4.0
-- **空间计算**：JTS (Java Topology Suite) 1.19.0
-- **优化算法**：Apache Commons Math 3.6.1 (Simplex线性规划)
-- **消息队列**：Eclipse Paho MQTT Client
-- **数据库**：PostgreSQL 14+ + PostGIS 3.2+
-- **定时任务**：Spring @Scheduled
-
-#### 前端
-- **地图框架**：Leaflet 1.9.4
-- **绘制引擎**：HTML5 Canvas
-- **图表库**：Chart.js 4.4.0
-- **HTTP客户端**：Axios
-- **样式**：原生CSS3
-
-#### 模拟器
-- **语言**：Python 3.8+
-- **MQTT客户端**：paho-mqtt
+### 核心功能
+- 🧬 **经络可视化**：Canvas 绘制十四经 + 80+ 穴位，实时热图显示电导/温度/肌电
+- 📊 **实时监测**：ECharts 多维度时间序列曲线
+- 🤖 **疗效预测**：随机森林回归模型（15维特征，50棵树）
+- 🔗 **网络分析**：经络拓扑网络、最短路径、中心性分析、社区检测
+- ⚠️ **异常告警**：电导突降≥30%、体温>38℃、肌电Z-score>3，钉钉机器人推送
+- 📡 **BLE模拟**：30名志愿者 × 多穴位传感器数据模拟，支持针刺仿真
 
 ---
 
-## 项目结构
+## 📁 项目结构
 
 ```
-AI_solo_coder_task_A_035/
-├── database/
-│   └── init_schema.sql          # PostgreSQL+PostGIS数据库初始化脚本
-├── backend/
-│   ├── pom.xml                  # Maven配置
-│   └── src/main/
-│       ├── resources/
-│       │   └── application.yml  # 应用配置文件
-│       └── java/com/oilfield/
-│           ├── SmartWaterFloodingApplication.java
-│           ├── entity/          # 实体类（7个）
-│           ├── repository/      # 数据访问层（7个）
-│           ├── service/         # 业务逻辑层
-│           │   ├── AllocationOptimizationService.java  # 调配优化核心
-│           │   ├── AlarmService.java                   # 告警服务
-│           │   ├── BlockSummaryService.java            # 区块汇总
-│           │   └── MqttDataListener.java               # MQTT数据监听
-│           └── controller/      # REST API控制层（6个）
-├── frontend/
-│   ├── index.html               # 主页面
-│   ├── css/
-│   │   └── style.css            # 样式文件
+AI_solo_coder_task_A_049/
+├── backend/                    # C++ 后端（完整版，使用 crow + mongocxx）
+│   ├── CMakeLists.txt
+│   ├── include/                # 头文件（10个模块）
+│   │   ├── data_types.h            # 统一数据结构
+│   │   ├── mongodb_manager.h       # MongoDB 数据层
+│   │   ├── ble_data_receiver.h     # BLE UDP 接收器
+│   │   ├── random_forest_model.h   # 随机森林预测模型
+│   │   ├── meridian_network_analyzer.h  # 经络拓扑分析
+│   │   ├── anomaly_detector.h      # 异常检测告警
+│   │   ├── dingtalk_notifier.h     # 钉钉通知推送
+│   │   ├── websocket_manager.h     # WebSocket 广播
+│   │   ├── data_processor.h        # 数据处理管道
+│   │   └── http_server.h           # HTTP 服务
+│   └── src/                    # 实现文件
+├── ble_simulator/              # BLE 传感器数据模拟器
+│   ├── CMakeLists.txt
+│   ├── include/ble_simulator.h
+│   └── src/
+├── frontend/                   # 前端页面
+│   ├── index.html
+│   ├── css/style.css
 │   └── js/
-│       ├── config.js            # 配置文件
-│       ├── api.js               # API调用封装
-│       ├── map.js               # 地图管理
-│       ├── charts.js            # 图表管理
-│       └── app.js               # 主应用逻辑
-├── simulator/
-│   ├── dtu_simulator.py         # 4G DTU模拟器
-│   └── requirements.txt         # Python依赖
-└── README.md                    # 本文档
+│       ├── meridian_renderer.js    # Canvas 经络图渲染器
+│       └── app.js                   # 主应用逻辑
+├── mongodb/
+│   └── init_db.js              # MongoDB 初始化脚本（经络/穴位/志愿者/索引）
+├── backend_single.cpp          # ⭐ 零依赖单文件后端（推荐快速体验）
+├── build_windows.bat           # Windows 编译脚本
+├── build_linux.sh              # Linux/macOS 编译脚本
+└── run_windows.bat             # 一键编译+运行脚本
 ```
 
 ---
 
-## 核心功能模块
+## 🚀 快速开始（零依赖，推荐）
 
-### 1. 数据库设计
+无需安装 Crow、MongoDB、OpenSSL 等任何第三方库，直接编译运行。
 
-#### 核心数据表
-| 表名 | 说明 | 关键字段 |
-|------|------|----------|
-| `wells` | 井基础信息 | well_id, well_type, location(Point), block_name, design_pressure |
-| `water_injection_data` | 注水井日数据 | water_volume, injection_pressure, absorption_index |
-| `production_data` | 采油井日数据 | fluid_volume, oil_volume, water_cut, fluid_level |
-| `injection_production_relation` | 注采对应关系 | injection_well_id, production_well_id, effectiveness_type, effectiveness_degree |
-| `allocation_suggestion` | 调配建议 | current_water_volume, suggested_water_volume, adjustment_direction |
-| `alarms` | 告警信息 | alarm_level, alarm_type, alarm_message, acknowledged |
-| `block_daily_summary` | 区块日汇总 | daily_oil_production, daily_water_injection, comprehensive_water_cut |
-| `water_flood_curve` | 水驱曲线 | cumulative_water_injection, cumulative_oil_production, curve_slope |
+### Windows
+```bat
+:: 一键编译并启动
+run_windows.bat
 
-#### 空间特性
-- PostGIS Geometry类型存储井位坐标（Point, SRID=4326）
-- 空间索引加速地理位置查询
-- 支持空间距离计算、缓冲区分析
-
-### 2. 注水调配优化模型
-
-#### 算法原理
-基于**注采平衡原理**和**水驱特征曲线**，使用**线性规划（单纯形法）**求解最优解。
-
-#### 水驱特征曲线
-```
-lg(Lp) = a + b * lg(Np)
-其中：
-- Lp: 累计产液量
-- Np: 累计产油量
-- a, b: 回归系数
+:: 或手动编译
+build_windows.bat
+tcm_backend.exe --port 8080
 ```
 
-#### 目标函数
-```
-Maximize: Σ(Wi * Ki) - λ * Σ(ΔWi)
-约束条件：
-- Σ(Wi) = W_total （注采平衡）
-- Wi_min ≤ Wi ≤ Wi_max （单井上下限）
-- ΔWi ≤ 0.2 * Wi_current （增幅≤20%）
-- ΔWi ≥ -0.3 * Wi_current （降幅≤30%）
+### Linux / macOS
+```bash
+chmod +x build_linux.sh
+./build_linux.sh
+./tcm_backend --port 8080
 ```
 
-### 3. 两级告警系统
-
-| 告警级别 | 触发条件 | 告警类型 | 推送方式 |
-|---------|----------|----------|----------|
-| **一级（水淹预警）** | 采油井含水率月上升 > 5% | WATER_CUT_RISE | MQTT + 前端展示 |
-| **二级（井筒异常）** | 注水井压力 > 设计压力 * 80% | PRESSURE_ANOMALY | MQTT + 前端展示 |
-
-### 4. 前端可视化
-
-#### 井位绘制
-- **注水井**：蓝色圆圈，带"注"字标识
-- **采油井**：红色三角，带"采"字标识
-- **注采连线**：颜色根据受效程度
-  - 绿色：高效受效（>70%）
-  - 黄色：中等受效（40%-70%）
-  - 红色：无效受效（<40%）
-
-#### 详情面板
-点击井位弹出，包含：
-- 井基础信息
-- 近90天生产趋势曲线（Chart.js）
-- 注采对应分析图
-- 最新调配建议（注水井）
-- 注采对应关系列表
-
-#### 核心指标
-- 区块日产油量（t）
-- 区块日注水量（m³）
-- 综合含水率（%）
+### 访问系统
+启动后打开浏览器访问：
+> **http://localhost:8080/static/index.html**
 
 ---
 
-## 部署说明
+## 🏗️ 完整版本构建（Crow + MongoDB）
 
-### 1. 数据库部署
+### 依赖项
+- C++17 编译器（MSVC 2019+ / GCC 8+ / Clang 8+）
+- CMake ≥ 3.14
+- [Crow](https://github.com/CrowCpp/Crow)（header-only HTTP/WebSocket 框架）
+- [mongocxx](https://github.com/mongodb/mongo-cxx-driver)（MongoDB C++ 驱动）
+- OpenSSL ≥ 1.1
+- MongoDB ≥ 4.4
 
-#### 系统要求
-- PostgreSQL 14+
-- PostGIS 3.2+
-
-#### 初始化步骤
+### 编译
 ```bash
-# 1. 创建数据库
-createdb -U postgres oilfield_db
-
-# 2. 启用PostGIS扩展
-psql -U postgres -d oilfield_db -c "CREATE EXTENSION postgis;"
-
-# 3. 执行初始化脚本
-psql -U postgres -d oilfield_db -f database/init_schema.sql
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . -j
 ```
 
-### 2. 后端部署
-
-#### 系统要求
-- JDK 17+
-- Maven 3.8+
-
-#### 配置文件
-修改 `backend/src/main/resources/application.yml`：
-```yaml
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/oilfield_db
-    username: postgres
-    password: your_password
-
-mqtt:
-  broker: tcp://localhost:1883
-  username: admin
-  password: admin
+### 初始化数据库
+```bash
+mongosh --file mongodb/init_db.js
 ```
 
-#### 启动命令
+### 运行
 ```bash
-cd backend
-mvn clean package
-java -jar target/smart-water-flooding-1.0.0.jar
-```
+# 启动后端（默认端口 8080）
+./build/tcm_backend --port 8080 --mongodb mongodb://localhost:27017 --db tcm_acupuncture
 
-### 3. MQTT Broker部署
-使用EMQX或Mosquitto：
-```bash
-# Docker方式启动EMQX
-docker run -d --name emqx -p 1883:1883 -p 8083:8083 -p 8883:8883 emqx/emqx:5.0
-```
-
-### 4. 前端部署
-
-#### 系统要求
-- Node.js 16+ 或任意HTTP服务器
-
-#### 启动方式
-```bash
-# 方式1：使用Python启动
-cd frontend
-python -m http.server 8080
-
-# 方式2：使用Nginx
-# 将frontend目录复制到nginx/html下
-```
-
-访问地址：`http://localhost:8080`
-
-### 5. DTU模拟器部署
-
-#### 安装依赖
-```bash
-cd simulator
-pip install -r requirements.txt
-```
-
-#### 运行模式
-
-**单日数据上报**：
-```bash
-python dtu_simulator.py --mode daily --end-date 2024-01-01
-```
-
-**历史数据回填**：
-```bash
-python dtu_simulator.py --mode backfill --start-date 2024-01-01 --end-date 2024-03-31 --speed 5.0
-```
-
-**实时模拟**：
-```bash
-python dtu_simulator.py --mode realtime
+# 另开终端启动 BLE 模拟器
+./build/ble_simulator --volunteers 30 --interval 100
 ```
 
 ---
 
-## REST API 接口
+## 🧠 核心算法详解
 
-### 井信息管理
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/wells` | 获取井列表 |
-| GET | `/api/wells/{id}` | 获取单井详情 |
-| GET | `/api/wells/{id}/trend?days=90` | 获取井生产趋势 |
-| GET | `/api/wells/blocks` | 获取区块列表 |
+### 1. 随机森林针刺疗效预测
 
-### 生产数据
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/data/report` | 生产数据上报（MQTT同时支持） |
-| GET | `/api/data/injection/latest` | 获取最新注水数据 |
-| GET | `/api/data/production/latest` | 获取最新采油数据 |
+**输入特征（15维）**：
 
-### 区块汇总
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/summary/core-indicators?block={block}` | 获取核心指标 |
-| GET | `/api/summary/history?days=30` | 获取历史汇总 |
+| 特征 | 说明 |
+|------|------|
+| skin_conductance_change | 针刺前后皮肤电导差值 |
+| skin_conductance_ratio | 电导比值（post/pre） |
+| temperature_change | 温度差值 |
+| emg_amplitude_change | 肌电幅值差值 |
+| emg_frequency_change | 肌电频率差值 |
+| pre/post_conductance_mean | 针刺前/后电导均值 |
+| conductance/temperature_variance | 电导/温度方差 |
+| emg_amplitude_mean | 肌电幅值均值 |
+| conductance/temperature_slope | 电导/温度时序斜率 |
+| post_minus_pre_peak | 针刺前后峰值差 |
+| conductance_max_diff | 电导最大差值 |
+| emg_spectral_energy | 肌电频谱能量 |
 
-### 告警管理
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/alarms` | 获取告警列表 |
-| PUT | `/api/alarms/{id}/acknowledge` | 确认告警 |
-| POST | `/api/alarms/check` | 手动触发告警检查 |
+**模型参数**：
+- 决策树数量：50 棵
+- 最大深度：15
+- 最小分裂样本数：5
+- 特征采样：√F = 4 个特征/树（袋装 + 特征子采样）
+- 输出：`predicted_deqi`（得气强度 0~1）、`predicted_pain_relief`（疼痛缓解率 0~1）、`confidence`（置信度）
 
-### 调配优化
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/allocation/latest` | 获取最新调配建议 |
-| POST | `/api/allocation/run` | 手动执行调配优化 |
-| GET | `/api/allocation/history` | 获取历史调配建议 |
+### 2. 经络穴位拓扑网络分析
 
-### 注采关系
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/relations/map-data` | 获取地图连线数据 |
-| GET | `/api/relations/well/{wellId}` | 获取井的注采关系 |
+将穴位视为节点，相邻穴位/同经络穴位连边，边权重由皮尔逊相关系数计算：
 
----
+```cpp
+// 特征：多电极皮肤电导时间序列相关性
+r = Σ(xi-x̄)(yi-ȳ) / √[Σ(xi-x̄)² Σ(yi-ȳ)²]
+weight = 0.5 + 0.5 * r
+```
 
-## 定时任务配置
+**分析指标**：
+- **度中心性**（Degree Centrality）：节点连接数占比
+- **接近中心性**（Closeness Centrality）：到其他节点平均最短路径倒数
+- **中介中心性**（Betweenness Centrality）：最短路径经过频率
+- **聚类系数**（Clustering Coefficient）：邻居节点互连比例
+- **最优路径**：Dijkstra 算法计算两穴位间最优刺激路径
 
-| 任务 | 频率 | 说明 |
-|------|------|------|
-| 区块日汇总 | 每日 00:10 | 计算上一日区块汇总数据 |
-| 告警检查 | 每日 08:00 | 检查两级告警条件 |
-| 调配优化 | 每周一 02:00 | 生成周度注水调配建议 |
+### 3. 异常检测
 
-可在 `application.yml` 中配置：
-```yaml
-scheduling:
-  enabled: true
-  summary-cron: "0 10 0 * * ?"
-  alarm-cron: "0 0 8 * * ?"
-  allocation-cron: "0 0 2 ? * MON"
+| 告警类型 | 检测规则 | 阈值 |
+|----------|----------|------|
+| 皮肤电导突降 | (prev - curr) / prev × 100% | ≥ 30% |
+| 体温过高 | 红外温度 > 阈值 | > 38℃ |
+| 体温过低 | 红外温度 < 阈值 | < 35℃ |
+| 肌电异常 | Z-score = \|x - μ\| / σ | > 3.0 |
+
+告警冷却：30秒内同穴位同类型不重复触发
+
+### 4. 钉钉告警推送
+
+使用签名安全机制的钉钉群机器人：
+```
+签名 = Base64(HMAC-SHA256( timestamp + "\n" + secret, secret ))
+URL = webhook_url + "&timestamp=" + timestamp + "&sign=" + url_encode(sign)
 ```
 
 ---
 
-## 数据格式
+## 🔌 REST API 文档
 
-### MQTT数据上报格式
+### 基础接口
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/health` | 服务健康检查 |
+| GET | `/api/acupoints` | 获取所有穴位信息 |
+| GET | `/api/meridians` | 获取所有经络信息 |
 
-**主题**：`oilfield/well/data`
+### 传感器数据
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/sensor/ingest` | 上报单条传感器数据 |
+| POST | `/api/sensor/query` | 查询历史传感器数据 |
 
-**注水井数据**：
+`/api/sensor/ingest` 请求体：
 ```json
 {
-  "wellId": "Z-0001",
-  "wellType": "INJECTION",
-  "reportTime": "2024-01-01T08:00:00",
-  "waterVolume": 125.5,
-  "injectionPressure": 22.3,
-  "absorptionIndex": 4.2
+  "volunteer_id": "V001",
+  "acupoint_id": "ST36",
+  "meridian_id": "ST",
+  "timestamp": 1718000000000,
+  "skin_conductance": 18.5,
+  "skin_conductance_prev": 12.3,
+  "infrared_temperature": 36.7,
+  "emg_amplitude": 42.5,
+  "emg_frequency": 68.2,
+  "is_post_acupuncture": true,
+  "session_id": "SES-001"
 }
 ```
 
-**采油井数据**：
-```json
-{
-  "wellId": "C-0001",
-  "wellType": "PRODUCTION",
-  "reportTime": "2024-01-01T08:00:00",
-  "fluidVolume": 85.2,
-  "oilVolume": 12.8,
-  "waterCut": 85.0,
-  "fluidLevel": 1250.5
-}
+### 疗效评估
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/predict` | 随机森林预测针刺疗效 |
+| POST | `/api/session/start` | 开始治疗会话 |
+| POST | `/api/session/end` | 结束会话并返回评估 |
+| POST | `/api/efficacy/query` | 查询历史疗效记录 |
+
+### 网络分析
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/network/metrics` | 获取所有穴位拓扑指标 |
+| GET | `/api/network/adjacency` | 获取经络邻接矩阵 |
+
+### 告警
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/alerts` | 获取最近告警 |
+
+### WebSocket
+- 连接端点：`ws://host:port/ws`
+- 实时推送消息类型：`sensor`, `alert`, `prediction`, `efficacy`, `network`
+
+---
+
+## 🖥️ 前端功能说明
+
+### 主界面布局
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  状态栏：连接状态 / 数据包数 / 志愿者数 / 告警数                 │
+├──────────┬──────────────────────────────────────┬─────────────────┤
+│ 经络选择  │                                      │ 电导实时曲线     │
+│ 志愿者    │         Canvas 经络穴位图            │ 温度实时曲线     │
+│ 实时告警  │  （人体轮廓+经络+穴位热图+悬浮提示）  │ 肌电实时曲线     │
+│          │                                      │ 特征重要性图     │
+├──────────┴──────────────────────────────────────┴─────────────────┤
+│  疗效指标卡片：得气强度 / 疼痛缓解率 / 置信度 / 经络通畅度        │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### MQTT告警推送格式
+### 交互功能
+- 点击经络列表可单独显示某一经络
+- 悬浮穴位显示：穴位名/拼音/经络/实时数据/主治
+- 点击穴位切换右侧时间序列曲线
+- 切换数据类型：皮肤电导 / 红外温度 / 肌电幅值
+- 热图模式：根据传感器值动态渲染穴位颜色与大小
+- 经络流向动画：流光效果展示经气循行
 
-**主题**：`oilfield/alarm`
+---
 
-```json
-{
-  "id": 1,
-  "wellId": "C-0001",
-  "alarmLevel": "LEVEL_1",
-  "alarmType": "WATER_CUT_RISE",
-  "alarmMessage": "采油井C-0001含水率月上升8.5%，超过5%阈值",
-  "alarmTime": "2024-01-01T08:00:00",
-  "threshold": 5.0,
-  "actualValue": 8.5
-}
+## 📊 数据库集合设计
+
+| 集合 | 说明 | 索引 |
+|------|------|------|
+| `sensor_data` | 时序传感器数据（预计亿级） | `{volunteer_id, acupoint_id, timestamp: -1}` TTL 365天 |
+| `efficacy_records` | 疗效记录 + 非结构化文本 | `{volunteer_id, session_id, timestamp: -1}` |
+| `predictions` | 模型预测结果 | `{session_id, timestamp: -1}` |
+| `alerts` | 异常告警记录 | `{acknowledged, timestamp: -1}` |
+| `volunteers` | 志愿者信息（30名） | `{volunteer_id: 1}` unique |
+| `acupoints` | 穴位基础信息（80+） | `{id: 1}` unique |
+| `meridians` | 十四经基础信息 | `{id: 1}` unique |
+
+---
+
+## 🔧 配置项
+
+### 钉钉机器人
+修改 `backend/src/dingtalk_notifier.cpp` 或运行时传入：
+```cpp
+notifier.initialize(
+    "https://oapi.dingtalk.com/robot/send?access_token=YOUR_TOKEN",
+    "YOUR_SIGN_SECRET"
+);
+```
+
+### 异常检测阈值
+```cpp
+detector.set_conductance_drop_threshold(30.0);   // % 
+detector.set_temperature_high_threshold(38.0);    // ℃
+detector.set_temperature_low_threshold(35.0);     // ℃
+```
+
+### BLE 模拟器参数
+```bash
+ble_simulator \
+  --volunteers 30 \        # 志愿者数量
+  --interval 100 \         # 上报间隔 ms
+  --http http://127.0.0.1:8080 \  # 后端地址（或--no-http用UDP）
+  --anomaly-prob 0.005     # 异常注入概率
 ```
 
 ---
 
-## 常见问题
+## 🤝 技术栈
 
-### 1. 数据库连接失败
-- 检查PostgreSQL服务是否启动
-- 确认PostGIS扩展已安装
-- 验证用户名密码和端口配置
-
-### 2. MQTT连接失败
-- 检查EMQX/Mosquitto服务是否启动
-- 确认防火墙已开放1883端口
-- 验证MQTT用户名密码配置
-
-### 3. 调配优化执行失败
-- 检查是否有足够的历史数据（建议>30天）
-- 查看日志确认线性规划求解是否收敛
-- 确认井数据完整性
-
-### 4. 前端地图不显示
-- 检查Leaflet CDN是否可访问
-- 确认浏览器控制台无CORS错误
-- 检查后端API是否正常响应
+| 层 | 技术 |
+|----|------|
+| 前端 | HTML5 Canvas + ECharts 5 + 原生 JavaScript |
+| 后端 | C++17 / Crow (HTTP+WS) / 标准库零依赖版本 |
+| 数据库 | MongoDB 5.x（时序 + 文档） |
+| 通信 | BLE Gateway → UDP 8081 / HTTP POST |
+| 算法 | 随机森林回归 / 皮尔逊相关 / 图论分析 |
+| 告警 | 钉钉群机器人 Webhook + HMAC-SHA256 签名 |
 
 ---
 
-## 性能优化建议
+## 📝 License
 
-1. **数据库层**：
-   - 为日期字段创建B-tree索引
-   - 为空间字段创建GiST索引
-   - 定期VACUUM ANALYZE优化查询性能
-
-2. **后端层**：
-   - 使用Redis缓存热点数据（井列表、最新数据）
-   - 批量操作减少数据库交互
-   - 异步处理MQTT数据上报
-
-3. **前端层**：
-   - 数据按需加载，避免一次性加载所有历史数据
-   - Canvas绘制使用requestAnimationFrame
-   - 图表数据抽样展示
+中医药大学内部研究使用 · 学术用途免费
 
 ---
 
-## License
+## 📮 常见问题
 
-MIT License
+**Q: 启动后前端连接不上 WebSocket？**  
+A: 零依赖版本不支持 WebSocket，前端会自动降级为内置数据模拟。完整版本需要 Crow 库。
+
+**Q: 可以不装 MongoDB 吗？**  
+A: 可以。`backend_single.cpp` 内置内存存储 + 默认穴位经络数据，无需外部数据库。
+
+**Q: 如何接入真实 BLE 网关？**  
+A: 配置 BLE 网关将数据以 UDP 报文格式 `vid|apid|ts|sc|scp|temp|emg_a|emg_f|mer|post|sid` 发送到后端 8081 端口，或通过 HTTP POST `/api/sensor/ingest` 上报 JSON。

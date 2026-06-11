@@ -3,138 +3,163 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智慧油田注水开发动态调控系统</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="css/style.css" />
+    <title>古代中医经络穴位数字化与针刺疗效关联分析系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div class="app-container">
         <header class="app-header">
-            <h1>智慧油田注水开发动态调控系统</h1>
-            <div class="header-info">
-                <span id="current-time">--</span>
-                <span class="status-indicator online">系统在线</span>
+            <div class="title-section">
+                <div class="logo">
+                    <span class="logo-icon">☯</span>
+                    <div class="title-text">
+                        <h1>古代中医经络穴位数字化与针刺疗效关联分析系统</h1>
+                        <p class="subtitle">TCM Meridian Digitalization &amp; Acupuncture Efficacy Analysis Platform</p>
+                    </div>
+                </div>
+            </div>
+            <div class="status-section">
+                <div class="status-item">
+                    <span class="status-dot" id="connection-status"></span>
+                    <span id="connection-text">连接中...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon">📡</span>
+                    <span id="packet-count">0</span>
+                    <span class="status-label">数据包</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon">👥</span>
+                    <span id="volunteer-count">0</span>
+                    <span class="status-label">志愿者</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-icon">⚠️</span>
+                    <span id="alert-count">0</span>
+                    <span class="status-label">告警</span>
+                </div>
             </div>
         </header>
 
         <div class="main-content">
-            <aside class="left-panel">
-                <div class="panel-section">
-                    <h3>核心指标</h3>
-                    <div class="indicator-cards">
-                        <div class="indicator-card oil">
-                            <div class="indicator-label">日产油量</div>
-                            <div class="indicator-value" id="daily-oil">--</div>
-                            <div class="indicator-unit">t</div>
-                            <div class="indicator-change" id="oil-change">--</div>
-                        </div>
-                        <div class="indicator-card water">
-                            <div class="indicator-label">日注水量</div>
-                            <div class="indicator-value" id="daily-water">--</div>
-                            <div class="indicator-unit">m³</div>
-                            <div class="indicator-change" id="water-change">--</div>
-                        </div>
-                        <div class="indicator-card cut">
-                            <div class="indicator-label">综合含水率</div>
-                            <div class="indicator-value" id="water-cut">--</div>
-                            <div class="indicator-unit">%</div>
-                            <div class="indicator-change" id="cut-change">--</div>
-                        </div>
-                    </div>
+            <aside class="sidebar-left">
+                <div class="panel">
+                    <h3 class="panel-title">经络选择</h3>
+                    <div class="meridian-list" id="meridian-list"></div>
                 </div>
-
-                <div class="panel-section">
-                    <h3>区块筛选</h3>
-                    <select id="block-selector" class="form-control">
-                        <option value="ALL">全部区块</option>
+                <div class="panel">
+                    <h3 class="panel-title">志愿者</h3>
+                    <select id="volunteer-select" class="form-control">
+                        <option value="">全部志愿者</option>
                     </select>
-                </div>
-
-                <div class="panel-section">
-                    <h3>图层控制</h3>
-                    <div class="layer-controls">
-                        <label class="checkbox-item">
-                            <input type="checkbox" id="show-injection" checked>
-                            <span class="legend-circle injection"></span>
-                            注水井
-                        </label>
-                        <label class="checkbox-item">
-                            <input type="checkbox" id="show-production" checked>
-                            <span class="legend-triangle production"></span>
-                            采油井
-                        </label>
-                        <label class="checkbox-item">
-                            <input type="checkbox" id="show-relations" checked>
-                            <span class="legend-line"></span>
-                            注采对应关系
-                        </label>
-                        <label class="checkbox-item">
-                            <input type="checkbox" id="show-allocation" checked>
-                            <span class="legend-arrow"></span>
-                            调配建议
-                        </label>
+                    <div class="session-controls">
+                        <button id="btn-start-session" class="btn btn-primary">开始会话</button>
+                        <button id="btn-end-session" class="btn btn-secondary">结束会话</button>
                     </div>
                 </div>
-
-                <div class="panel-section">
-                    <h3>注采受效图例</h3>
-                    <div class="legend-items">
-                        <div class="legend-item">
-                            <span class="legend-line" style="background: #00FF00;"></span>
-                            <span>高效受效</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-line" style="background: #FFFF00;"></span>
-                            <span>中等受效</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-line" style="background: #FF0000;"></span>
-                            <span>无效受效</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="panel-section">
-                    <h3>告警信息 <span class="badge" id="alarm-badge">0</span></h3>
-                    <div class="alarm-list" id="alarm-list">
-                        <div class="no-data">暂无告警</div>
+                <div class="panel">
+                    <h3 class="panel-title">实时告警</h3>
+                    <div class="alert-list" id="alert-list">
+                        <div class="alert-empty">暂无告警</div>
                     </div>
                 </div>
             </aside>
 
-            <main class="map-container">
-                <div id="map"></div>
-                <canvas id="well-canvas"></canvas>
-                <div class="map-controls">
-                    <button class="control-btn" onclick="refreshAllData()">
-                        <span>🔄</span> 刷新数据
-                    </button>
-                    <button class="control-btn" onclick="runAllocation()">
-                        <span>📊</span> 生成调配建议
-                    </button>
-                    <button class="control-btn" onclick="checkAlarms()">
-                        <span>⚠️</span> 检查告警
-                    </button>
+            <section class="content-center">
+                <div class="panel meridian-panel">
+                    <div class="panel-header">
+                        <h3 class="panel-title">人体经络穴位图</h3>
+                        <div class="panel-tools">
+                            <label class="tool-item">
+                                <input type="checkbox" id="show-meridians" checked> 显示经络
+                            </label>
+                            <label class="tool-item">
+                                <input type="checkbox" id="show-labels" checked> 显示标签
+                            </label>
+                            <label class="tool-item">
+                                <input type="checkbox" id="show-heatmap" checked> 热图模式
+                            </label>
+                            <select id="data-type" class="form-control small">
+                                <option value="conductance">皮肤电导</option>
+                                <option value="temperature">红外温度</option>
+                                <option value="emg">肌电幅值</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="canvas-container">
+                        <canvas id="meridian-canvas" width="800" height="750"></canvas>
+                        <div id="acupoint-tooltip" class="acupoint-tooltip"></div>
+                    </div>
                 </div>
-            </main>
 
-            <aside class="right-panel" id="detail-panel" style="display: none;">
-                <div class="panel-header">
-                    <h3 id="detail-title">井详情</h3>
-                    <button class="close-btn" onclick="closeDetailPanel()">×</button>
+                <div class="panel efficacy-panel">
+                    <h3 class="panel-title">针刺疗效预测</h3>
+                    <div class="efficacy-metrics">
+                        <div class="metric-card deqi">
+                            <div class="metric-icon">⚡</div>
+                            <div class="metric-content">
+                                <div class="metric-label">得气强度</div>
+                                <div class="metric-value" id="deqi-value">--</div>
+                                <div class="metric-bar"><div class="metric-fill" id="deqi-bar"></div></div>
+                            </div>
+                        </div>
+                        <div class="metric-card pain">
+                            <div class="metric-icon">💊</div>
+                            <div class="metric-content">
+                                <div class="metric-label">疼痛缓解率</div>
+                                <div class="metric-value" id="pain-value">--</div>
+                                <div class="metric-bar"><div class="metric-fill" id="pain-bar"></div></div>
+                            </div>
+                        </div>
+                        <div class="metric-card confidence">
+                            <div class="metric-icon">🎯</div>
+                            <div class="metric-content">
+                                <div class="metric-label">预测置信度</div>
+                                <div class="metric-value" id="confidence-value">--</div>
+                                <div class="metric-bar"><div class="metric-fill" id="confidence-bar"></div></div>
+                            </div>
+                        </div>
+                        <div class="metric-card network">
+                            <div class="metric-icon">🔗</div>
+                            <div class="metric-content">
+                                <div class="metric-label">经络通畅度</div>
+                                <div class="metric-value" id="network-value">--</div>
+                                <div class="metric-bar"><div class="metric-fill" id="network-bar"></div></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="panel-content" id="detail-content">
+            </section>
+
+            <aside class="sidebar-right">
+                <div class="panel">
+                    <h3 class="panel-title">穴位电导实时曲线</h3>
+                    <div class="chart-container" id="chart-conductance" style="height:240px"></div>
+                </div>
+                <div class="panel">
+                    <h3 class="panel-title">温度 &amp; 肌电</h3>
+                    <div class="chart-container" id="chart-temperature" style="height:180px"></div>
+                    <div class="chart-container" id="chart-emg" style="height:180px"></div>
+                </div>
+                <div class="panel">
+                    <h3 class="panel-title">特征重要性分析</h3>
+                    <div class="chart-container" id="chart-features" style="height:200px"></div>
                 </div>
             </aside>
         </div>
+
+        <footer class="app-footer">
+            <div class="footer-left">
+                <span>© 2026 中医药大学 · 经络数字化研究实验室</span>
+            </div>
+            <div class="footer-right">
+                <span id="current-time"></span>
+            </div>
+        </footer>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="js/config.js"></script>
-    <script src="js/api.js"></script>
-    <script src="js/map.js"></script>
-    <script src="js/charts.js"></script>
+    <script src="js/meridian_renderer.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
