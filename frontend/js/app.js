@@ -1,8 +1,3 @@
-/**
- * 中医经络数字化系统主应用
- * 负责数据通信、图表管理、UI交互
- */
-
 const MERIDIAN_COLORS = {
     LU: '#e74c3c', LI: '#f39c12', ST: '#e67e22', SP: '#f1c40f',
     HT: '#e91e63', SI: '#ff6b35', BL: '#2980b9', KI: '#8e44ad',
@@ -23,22 +18,22 @@ class TCMApplication {
         this.history = {};
         this.volunteerHistories = {};
         this.maxHistory = 2000;
-        this.maxRenderPoints = 500;
         this.packetCount = 0;
         this.volunteerId = '';
         this.currentSession = null;
         this.selectedAcupoint = 'ST36';
-        this.charts = {};
         this.compareVolunteers = [];
-        this.initLazySeries = 5;
-        this._chartUpdateScheduled = false;
         this.init();
     }
 
     async init() {
         this._initDOM();
-        this._initCharts();
-        this._initRenderer();
+        this.canvas = new MeridianCanvas(this.dom.canvas, this.dom.tooltip);
+        this.charts = new CurveChart();
+        this.canvas.onAcupointClick = (id) => {
+            this.selectedAcupoint = id;
+            this._scheduleChartUpdate();
+        };
         await this._loadInitialData();
         this._initWebSocket();
         this._bindEvents();
@@ -62,116 +57,6 @@ class TCMApplication {
         };
     }
 
-    _initRenderer() {
-        this.renderer = new MeridianRenderer(this.dom.canvas, this.dom.tooltip);
-        this.renderer.onAcupointClick = (id) => {
-            this.selectedAcupoint = id;
-            this._updateChartsData();
-        };
-    }
-
-    _initCharts() {
-        const axisStyle = {
-            axisLine: { lineStyle: { color: '#3d4766' } },
-            axisLabel: { color: '#8a93ac', fontSize: 10 },
-            splitLine: { lineStyle: { color: '#252c42' } }
-        };
-
-        const dataZoomConfig = [
-            {
-                type: 'inside',
-                start: 70,
-                end: 100,
-                zoomOnMouseWheel: 'ctrl',
-                moveOnMouseMove: true,
-                moveOnMouseWheel: false
-            },
-            {
-                type: 'slider',
-                show: true,
-                height: 14,
-                bottom: 4,
-                borderColor: '#3d4766',
-                backgroundColor: '#1a1f30',
-                fillerColor: 'rgba(212,175,55,0.15)',
-                handleStyle: { color: '#d4af37' },
-                textStyle: { color: '#8a93ac', fontSize: 9 },
-                start: 70,
-                end: 100
-            }
-        ];
-
-        this.charts.conductance = echarts.init(document.getElementById('chart-conductance'));
-        this.charts.conductance.setOption({
-            title: { text: '皮肤电导 (μS)', left: 10, top: 4, textStyle: { color: '#c9d1e4', fontSize: 12, fontWeight: 'normal' } },
-            grid: { left: 45, right: 15, top: 35, bottom: 50 },
-            tooltip: { trigger: 'axis', backgroundColor: 'rgba(20,24,38,0.95)', borderColor: '#d4af37', textStyle: { color: '#e4e8f0' } },
-            legend: { data: [], top: 2, right: 10, textStyle: { color: '#8a93ac', fontSize: 10 }, itemWidth: 12, itemHeight: 8 },
-            dataZoom: dataZoomConfig,
-            xAxis: { type: 'category', data: [], ...axisStyle },
-            yAxis: { type: 'value', ...axisStyle, scale: true },
-            series: []
-        });
-
-        this.charts.temperature = echarts.init(document.getElementById('chart-temperature'));
-        this.charts.temperature.setOption({
-            title: { text: '红外温度 (℃)', left: 10, top: 4, textStyle: { color: '#c9d1e4', fontSize: 12, fontWeight: 'normal' } },
-            grid: { left: 40, right: 15, top: 30, bottom: 50 },
-            tooltip: { trigger: 'axis', backgroundColor: 'rgba(20,24,38,0.95)', borderColor: '#e74c3c', textStyle: { color: '#e4e8f0' } },
-            dataZoom: dataZoomConfig,
-            xAxis: { type: 'category', data: [], ...axisStyle },
-            yAxis: { type: 'value', min: 35, max: 39, ...axisStyle },
-            series: [{
-                name: '温度', type: 'line', data: [], smooth: true, showSymbol: false,
-                sampling: 'lttb',
-                lineStyle: { color: '#e74c3c', width: 2 },
-                areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-                    colorStops: [{ offset: 0, color: 'rgba(231,76,60,0.25)' }, { offset: 1, color: 'rgba(231,76,60,0)' }] } },
-                markLine: { silent: true, symbol: 'none', lineStyle: { color: '#f5a623', type: 'dashed' },
-                    data: [{ yAxis: 38, label: { formatter: '38℃ 阈值', color: '#f5a623', fontSize: 9 } }] }
-            }]
-        });
-
-        this.charts.emg = echarts.init(document.getElementById('chart-emg'));
-        this.charts.emg.setOption({
-            title: { text: '肌电幅值 (μV)', left: 10, top: 4, textStyle: { color: '#c9d1e4', fontSize: 12, fontWeight: 'normal' } },
-            grid: { left: 40, right: 15, top: 30, bottom: 50 },
-            tooltip: { trigger: 'axis', backgroundColor: 'rgba(20,24,38,0.95)', borderColor: '#3498db', textStyle: { color: '#e4e8f0' } },
-            dataZoom: dataZoomConfig,
-            xAxis: { type: 'category', data: [], ...axisStyle },
-            yAxis: { type: 'value', ...axisStyle, scale: true },
-            series: [{
-                name: '肌电', type: 'line', data: [], smooth: true, showSymbol: false,
-                sampling: 'lttb',
-                lineStyle: { color: '#3498db', width: 2 },
-                areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-                    colorStops: [{ offset: 0, color: 'rgba(52,152,219,0.3)' }, { offset: 1, color: 'rgba(52,152,219,0)' }] } }
-            }]
-        });
-
-        this.charts.features = echarts.init(document.getElementById('chart-features'));
-        this.charts.features.setOption({
-            title: { text: '随机森林特征重要性', left: 10, top: 4, textStyle: { color: '#c9d1e4', fontSize: 12, fontWeight: 'normal' } },
-            grid: { left: 100, right: 15, top: 28, bottom: 8 },
-            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: 'rgba(20,24,38,0.95)', borderColor: '#9b59b6', textStyle: { color: '#e4e8f0' } },
-            xAxis: { type: 'value', ...axisStyle },
-            yAxis: { type: 'category', data: [], ...axisStyle, axisLabel: { fontSize: 10, color: '#c9d1e4' } },
-            series: [{
-                type: 'bar', data: [],
-                itemStyle: { color: { type: 'linear', x: 0, y: 0, x2: 1, y2: 0,
-                    colorStops: [{ offset: 0, color: '#9b59b6' }, { offset: 1, color: '#3498db' }] }, borderRadius: [0, 3, 3, 0] },
-                label: { show: true, position: 'right', color: '#c9d1e4', fontSize: 10, formatter: '{c}%' }
-            }]
-        });
-
-        this._chartUpdatePending = false;
-        this._chartDirty = false;
-
-        window.addEventListener('resize', () => {
-            for (const k in this.charts) this.charts[k].resize();
-        });
-    }
-
     async _loadInitialData() {
         try {
             const [apRes, merRes, alertRes] = await Promise.all([
@@ -181,26 +66,20 @@ class TCMApplication {
             ]);
             this.acupoints = await apRes.json();
             this.meridians = await merRes.json();
-
-            for (const m of this.meridians) {
-                m._color = MERIDIAN_COLORS[m.id] || ELEMENT_COLORS[m.element] || '#d4af37';
-            }
-            for (const ap of this.acupoints) {
-                this.history[ap.id] = [];
-            }
-
+            for (const m of this.meridians) m._color = MERIDIAN_COLORS[m.id] || ELEMENT_COLORS[m.element] || '#d4af37';
+            for (const ap of this.acupoints) this.history[ap.id] = [];
             this._renderMeridianList();
             this._renderVolunteerSelect();
-            this._renderFeatures();
-
-            this.renderer.setData(this.acupoints, this.meridians);
+            this.charts.updateFeatures([
+                { name: '电导变化率', val: 18.5 }, { name: '电导比值', val: 15.2 },
+                { name: '温度变化', val: 12.8 }, { name: '肌电幅值变化', val: 11.4 },
+                { name: '肌电频率变化', val: 9.7 }, { name: '电导方差', val: 8.3 },
+                { name: '温度方差', val: 7.1 }, { name: '肌电能量', val: 6.5 },
+                { name: '电导斜率', val: 5.4 }, { name: '温度斜率', val: 5.1 }
+            ]);
+            this.canvas.setData(this.acupoints, this.meridians);
             this.dom.volunteerCount.textContent = this.acupoints.length > 0 ? '30' : '0';
-
-            try {
-                const alerts = await alertRes.json();
-                for (const a of alerts) this._addAlert(a);
-            } catch (e) {}
-
+            try { const alerts = await alertRes.json(); for (const a of alerts) this._addAlert(a); } catch (e) {}
         } catch (e) {
             console.warn('加载初始数据失败，使用内置数据:', e.message);
             this._useFallbackData();
@@ -223,7 +102,6 @@ class TCMApplication {
             { id: 'GV', name: '督脉', pinyin: 'Du', element: '阳脉之海', acupoint_ids: ['GV14','GV20'], path_points: [[350,685],[335,500],[335,380],[400,205],[400,55]] },
             { id: 'CV', name: '任脉', pinyin: 'Ren', element: '阴脉之海', acupoint_ids: ['CV4','CV6','CV12','CV17'], path_points: [[410,125],[400,155],[400,190],[400,240],[400,275],[400,315],[400,340]] }
         ];
-
         const defaultAcupoints = [
             { id: 'LU7', name: '列缺', pinyin: 'Lieque', meridian_id: 'LU', x: 360, y: 400, z: 0, description: '络穴，八脉交会穴' },
             { id: 'LU9', name: '太渊', pinyin: 'Taiyuan', meridian_id: 'LU', x: 380, y: 450, z: 0, description: '输穴原穴脉会' },
@@ -263,15 +141,19 @@ class TCMApplication {
             { id: 'CV12', name: '中脘', pinyin: 'Zhongwan', meridian_id: 'CV', x: 400, y: 240, z: 0, description: '胃募穴' },
             { id: 'CV17', name: '膻中', pinyin: 'Danzhong', meridian_id: 'CV', x: 400, y: 190, z: 0, description: '气会心包募' }
         ];
-
         this.meridians = defaultMeridians.map(m => ({ ...m, _color: MERIDIAN_COLORS[m.id] || ELEMENT_COLORS[m.element] || '#d4af37' }));
         this.acupoints = defaultAcupoints;
         for (const ap of this.acupoints) this.history[ap.id] = [];
-
         this._renderMeridianList();
         this._renderVolunteerSelect();
-        this._renderFeatures();
-        this.renderer.setData(this.acupoints, this.meridians);
+        this.charts.updateFeatures([
+            { name: '电导变化率', val: 18.5 }, { name: '电导比值', val: 15.2 },
+            { name: '温度变化', val: 12.8 }, { name: '肌电幅值变化', val: 11.4 },
+            { name: '肌电频率变化', val: 9.7 }, { name: '电导方差', val: 8.3 },
+            { name: '温度方差', val: 7.1 }, { name: '肌电能量', val: 6.5 },
+            { name: '电导斜率', val: 5.4 }, { name: '温度斜率', val: 5.1 }
+        ]);
+        this.canvas.setData(this.acupoints, this.meridians);
         this.dom.volunteerCount.textContent = '30';
     }
 
@@ -280,22 +162,13 @@ class TCMApplication {
         const all = document.createElement('div');
         all.className = 'meridian-item active';
         all.innerHTML = `<span>全部经络</span><span class="meridian-color" style="background:linear-gradient(90deg,#e74c3c,#f1c40f,#27ae60,#3498db,#9b59b6)"></span>`;
-        all.onclick = () => {
-            document.querySelectorAll('.meridian-item').forEach(i => i.classList.remove('active'));
-            all.classList.add('active');
-            this.renderer.selectMeridian(null);
-        };
+        all.onclick = () => { document.querySelectorAll('.meridian-item').forEach(i => i.classList.remove('active')); all.classList.add('active'); this.canvas.selectMeridian(null); };
         this.dom.meridianList.appendChild(all);
-
         for (const m of this.meridians) {
             const el = document.createElement('div');
             el.className = 'meridian-item';
             el.innerHTML = `<span>${m.name} (${m.id})</span><span class="meridian-color" style="background:${m._color}"></span>`;
-            el.onclick = () => {
-                document.querySelectorAll('.meridian-item').forEach(i => i.classList.remove('active'));
-                el.classList.add('active');
-                this.renderer.selectMeridian(m.id);
-            };
+            el.onclick = () => { document.querySelectorAll('.meridian-item').forEach(i => i.classList.remove('active')); el.classList.add('active'); this.canvas.selectMeridian(m.id); };
             this.dom.meridianList.appendChild(el);
         }
     }
@@ -304,137 +177,51 @@ class TCMApplication {
         for (let i = 1; i <= 30; i++) {
             const opt = document.createElement('option');
             const vid = 'V' + String(i).padStart(3, '0');
-            opt.value = vid;
-            opt.textContent = vid + ' - 志愿者' + i;
+            opt.value = vid; opt.textContent = vid + ' - 志愿者' + i;
             this.dom.volunteerSelect.appendChild(opt);
         }
         this.volunteerId = 'V001';
         this.dom.volunteerSelect.value = this.volunteerId;
     }
 
-    _renderFeatures() {
-        const features = [
-            { name: '电导变化率', val: 18.5 },
-            { name: '电导比值', val: 15.2 },
-            { name: '温度变化', val: 12.8 },
-            { name: '肌电幅值变化', val: 11.4 },
-            { name: '肌电频率变化', val: 9.7 },
-            { name: '电导方差', val: 8.3 },
-            { name: '温度方差', val: 7.1 },
-            { name: '肌电能量', val: 6.5 },
-            { name: '电导斜率', val: 5.4 },
-            { name: '温度斜率', val: 5.1 }
-        ];
-        this.charts.features.setOption({
-            yAxis: { data: features.map(f => f.name).reverse() },
-            series: [{ data: features.map(f => f.val).reverse() }]
-        });
-    }
-
     _initWebSocket() {
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
         const url = `${proto}://${location.host}/ws`;
-
         try {
             this.ws = new WebSocket(url);
-            this.ws.onopen = () => {
-                this.dom.statusDot.className = 'status-dot online';
-                this.dom.statusText.textContent = '已连接';
-                console.log('[WS] 已连接');
-            };
+            this.ws.onopen = () => { this.dom.statusDot.className = 'status-dot online'; this.dom.statusText.textContent = '已连接'; };
             this.ws.onmessage = (e) => this._handleWSMessage(e.data);
-            this.ws.onclose = () => {
-                this.dom.statusDot.className = 'status-dot';
-                this.dom.statusText.textContent = '重连中...';
-                setTimeout(() => this._initWebSocket(), 3000);
-            };
-            this.ws.onerror = () => {
-                this.dom.statusDot.className = 'status-dot error';
-                this.dom.statusText.textContent = '连接失败（模拟数据中）';
-            };
-        } catch (e) {
-            this.dom.statusDot.className = 'status-dot error';
-            this.dom.statusText.textContent = '连接失败（模拟数据中）';
-        }
+            this.ws.onclose = () => { this.dom.statusDot.className = 'status-dot'; this.dom.statusText.textContent = '重连中...'; setTimeout(() => this._initWebSocket(), 3000); };
+            this.ws.onerror = () => { this.dom.statusDot.className = 'status-dot error'; this.dom.statusText.textContent = '连接失败（模拟数据中）'; };
+        } catch (e) { this.dom.statusDot.className = 'status-dot error'; this.dom.statusText.textContent = '连接失败（模拟数据中）'; }
     }
 
     _handleWSMessage(data) {
         try {
             const msg = JSON.parse(data);
-            if (msg.type === 'sensor') {
-                this._processSensorData(msg.data);
-            } else if (msg.type === 'alert') {
-                this._addAlert(msg.data);
-            } else if (msg.type === 'prediction') {
-                this._updateEfficacy(msg.data);
-            }
+            if (msg.type === 'sensor') this._processSensorData(msg.data);
+            else if (msg.type === 'alert') this._addAlert(msg.data);
+            else if (msg.type === 'prediction') this.charts.updateEfficacy(msg.data);
         } catch (e) {}
-    }
-
-    _lttbDownsample(data, threshold) {
-        if (data.length <= threshold || threshold < 3) return data;
-        const sampled = [data[0]];
-        const bucketSize = (data.length - 2) / (threshold - 2);
-        let a = 0;
-        for (let i = 0; i < threshold - 2; i++) {
-            const avgRangeStart = Math.floor((i + 1) * bucketSize) + 1;
-            const avgRangeEnd = Math.floor((i + 2) * bucketSize) + 1;
-            const avgRange = Math.min(avgRangeEnd, data.length) - avgRangeStart;
-            let avgX = 0, avgY = 0;
-            for (let j = avgRangeStart; j < avgRangeEnd; j++) {
-                avgX += j; avgY += data[j][1];
-            }
-            avgX /= avgRange; avgY /= avgRange;
-            const rangeOffs = Math.floor(i * bucketSize) + 1;
-            const rangeTo = Math.floor((i + 1) * bucketSize) + 1;
-            const pointA = [a, data[a][1]];
-            let maxArea = -1, maxAreaPoint = 0;
-            for (let j = rangeOffs; j < rangeTo; j++) {
-                const area = Math.abs(
-                    (pointA[0] - avgX) * (data[j][1] - pointA[1]) -
-                    (pointA[0] - j) * (avgY - pointA[1])
-                ) * 0.5;
-                if (area > maxArea) { maxArea = area; maxAreaPoint = j; }
-            }
-            sampled.push(data[maxAreaPoint]);
-            a = maxAreaPoint;
-        }
-        sampled.push(data[data.length - 1]);
-        return sampled;
-    }
-
-    _downsampleArray(arr, threshold) {
-        if (arr.length <= threshold) return arr;
-        const tuples = arr.map((v, i) => [i, v]);
-        const ds = this._lttbDownsample(tuples, threshold);
-        return ds.map(t => t[1]);
     }
 
     _processSensorData(data) {
         const ts = new Date(data.timestamp);
         const timeStr = `${ts.getHours().toString().padStart(2,'0')}:${ts.getMinutes().toString().padStart(2,'0')}:${ts.getSeconds().toString().padStart(2,'0')}`;
-
         if (!this.history[data.acupoint_id]) this.history[data.acupoint_id] = [];
         const h = this.history[data.acupoint_id];
         h.push({ ...data, time: timeStr });
         if (h.length > this.maxHistory) h.shift();
-
         const vid = data.volunteer_id || 'V001';
         if (!this.volunteerHistories[vid]) this.volunteerHistories[vid] = {};
         if (!this.volunteerHistories[vid][data.acupoint_id]) this.volunteerHistories[vid][data.acupoint_id] = [];
         const vh = this.volunteerHistories[vid][data.acupoint_id];
         vh.push({ ...data, time: timeStr });
         if (vh.length > this.maxHistory) vh.shift();
-
-        this.renderer.updateSensorData(data.acupoint_id, data);
-
-        if (data.acupoint_id === this.selectedAcupoint) {
-            this._scheduleChartUpdate();
-        }
-
+        this.canvas.updateSensorData(data.acupoint_id, data);
+        if (data.acupoint_id === this.selectedAcupoint) this._scheduleChartUpdate();
         this.packetCount++;
         this.dom.packetCount.textContent = this._formatNumber(this.packetCount);
-
         this._updateMetrics();
     }
 
@@ -443,130 +230,8 @@ class TCMApplication {
         this._chartUpdateScheduled = true;
         requestAnimationFrame(() => {
             this._chartUpdateScheduled = false;
-            this._updateChartsData();
+            this.charts.update(this.volunteerId, this.selectedAcupoint, this.history, this.volunteerHistories, this.compareVolunteers);
         });
-    }
-
-    _getVolunteerColor(idx) {
-        const palette = [
-            '#d4af37', '#e74c3c', '#3498db', '#27ae60', '#9b59b6',
-            '#f39c12', '#1abc9c', '#e67e22', '#34495e', '#e91e63',
-            '#00bcd4', '#8bc34a', '#ff9800', '#673ab7', '#2196f3',
-            '#ff5722', '#009688', '#795548', '#607d8b', '#ff4081',
-            '#536dfe', '#448aff', '#69f0ae', '#ffd740', '#e040fb',
-            '#18ffff', '#ff6e40', '#eeff41', '#b388ff', '#8c9eff'
-        ];
-        return palette[idx % palette.length];
-    }
-
-    _updateChartsData() {
-        const apId = this.selectedAcupoint;
-        const primaryVid = this.volunteerId || 'V001';
-
-        const volIds = new Set([primaryVid]);
-        if (this.compareVolunteers) {
-            this.compareVolunteers.forEach(v => volIds.add(v));
-        }
-        const allVolunteerIds = Object.keys(this.volunteerHistories)
-            .filter(v => this.volunteerHistories[v] && this.volunteerHistories[v][apId]);
-        allVolunteerIds.forEach(v => volIds.add(v));
-
-        const vidList = Array.from(volIds).slice(0, 30);
-        const displayCount = Math.min(vidList.length, this.initLazySeries);
-
-        const primaryH = (this.volunteerHistories[primaryVid] && this.volunteerHistories[primaryVid][apId])
-            ? this.volunteerHistories[primaryVid][apId]
-            : (this.history[apId] || []);
-
-        let times = primaryH.map(d => d.time);
-        const needTimes = times.length;
-
-        const tempVals = primaryH.map(d => Number(d.infrared_temperature.toFixed(2)));
-        const emgVals = primaryH.map(d => Number(d.emg_amplitude.toFixed(1)));
-
-        const dsTimes = this._downsampleArray(times, this.maxRenderPoints);
-        const dsTemp = this._downsampleArray(tempVals, this.maxRenderPoints);
-        const dsEmg = this._downsampleArray(emgVals, this.maxRenderPoints);
-
-        const condSeries = [];
-        const condLegend = [];
-
-        for (let i = 0; i < displayCount; i++) {
-            const vid = vidList[i];
-            const source = (this.volunteerHistories[vid] && this.volunteerHistories[vid][apId])
-                ? this.volunteerHistories[vid][apId]
-                : primaryH;
-            let data = source.map(d => Number(d.skin_conductance.toFixed(2)));
-            if (data.length !== needTimes) {
-                const pad = needTimes - data.length;
-                if (pad > 0) data = new Array(pad).fill(null).concat(data);
-                else data = data.slice(-needTimes);
-            }
-            data = this._downsampleArray(data, this.maxRenderPoints);
-            const isPrimary = vid === primaryVid;
-            condSeries.push({
-                name: `${vid}`,
-                type: 'line',
-                data: data,
-                smooth: true,
-                showSymbol: false,
-                sampling: 'lttb',
-                large: true,
-                largeThreshold: 500,
-                lineStyle: {
-                    color: this._getVolunteerColor(i),
-                    width: isPrimary ? 2.5 : 1.2,
-                    opacity: isPrimary ? 1.0 : 0.65
-                },
-                areaStyle: isPrimary ? {
-                    color: {
-                        type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-                        colorStops: [
-                            { offset: 0, color: this._getVolunteerColor(i) + '55' },
-                            { offset: 1, color: this._getVolunteerColor(i) + '00' }
-                        ]
-                    }
-                } : null,
-                emphasis: { focus: 'series', lineStyle: { width: 3 } },
-                z: isPrimary ? 100 : (100 - i)
-            });
-            condLegend.push(`${vid}`);
-        }
-
-        if (vidList.length > displayCount) {
-            condSeries.push({
-                name: `+${vidList.length - displayCount} 志愿者(点击加载)`,
-                type: 'line',
-                data: [],
-                lineStyle: { color: 'transparent' },
-                symbol: 'none',
-                silent: true
-            });
-        }
-
-        this.charts.conductance.setOption({
-            title: {
-                text: `皮肤电导 - ${apId} · 显示${displayCount}/${vidList.length}志愿者 (μS)`,
-                left: 10, top: 4,
-                textStyle: { color: '#c9d1e4', fontSize: 12, fontWeight: 'normal' }
-            },
-            xAxis: { data: dsTimes },
-            legend: { data: condLegend },
-            series: condSeries
-        }, { lazyUpdate: true });
-
-        this.charts.temperature.setOption({
-            xAxis: { data: dsTimes },
-            series: [{ data: dsTemp }]
-        }, { lazyUpdate: true });
-
-        this.charts.emg.setOption({
-            xAxis: { data: dsTimes },
-            series: [{ data: dsEmg }]
-        }, { lazyUpdate: true });
-
-        this._condSeriesTotal = vidList.length;
-        this._condSeriesShown = displayCount;
     }
 
     _updateMetrics() {
@@ -587,96 +252,54 @@ class TCMApplication {
         }
         if (cnt > 0) {
             avgDeqi /= cnt; avgPain /= cnt; avgConf /= cnt; avgNet /= cnt;
-            this._setMetric('deqi', avgDeqi, (avgDeqi * 100).toFixed(0) + '%');
-            this._setMetric('pain', avgPain, (avgPain * 100).toFixed(0) + '%');
-            this._setMetric('confidence', avgConf, (avgConf * 100).toFixed(0) + '%');
-            this._setMetric('network', avgNet, (avgNet * 100).toFixed(0) + '%');
+            this.charts._setMetric('deqi', avgDeqi, (avgDeqi * 100).toFixed(0) + '%');
+            this.charts._setMetric('pain', avgPain, (avgPain * 100).toFixed(0) + '%');
+            this.charts._setMetric('confidence', avgConf, (avgConf * 100).toFixed(0) + '%');
+            this.charts._setMetric('network', avgNet, (avgNet * 100).toFixed(0) + '%');
         }
-    }
-
-    _setMetric(key, ratio, text) {
-        document.getElementById(key + '-value').textContent = text;
-        document.getElementById(key + '-bar').style.width = (ratio * 100).toFixed(0) + '%';
-    }
-
-    _updateEfficacy(pred) {
-        this._setMetric('deqi', pred.predicted_deqi, (pred.predicted_deqi * 100).toFixed(0) + '%');
-        this._setMetric('pain', pred.predicted_pain_relief, (pred.predicted_pain_relief * 100).toFixed(0) + '%');
-        this._setMetric('confidence', pred.confidence, (pred.confidence * 100).toFixed(0) + '%');
     }
 
     _addAlert(alert) {
         this.alerts.unshift(alert);
         if (this.alerts.length > 50) this.alerts.pop();
-
         this.dom.alertCount.textContent = this.alerts.filter(a => !a.acknowledged).length;
         this.dom.alertList.innerHTML = '';
-
         for (const a of this.alerts.slice(0, 10)) {
-            const typeClass = a.alert_type.includes('temperature') ? 'warn' :
-                              a.alert_type.includes('conductance') ? '' : 'info';
+            const typeClass = a.alert_type.includes('temperature') ? 'warn' : a.alert_type.includes('conductance') ? '' : 'info';
             const el = document.createElement('div');
             el.className = 'alert-item ' + typeClass;
             const t = new Date(a.timestamp);
-            el.innerHTML = `
-                <div class="alert-type">${a.alert_type}</div>
-                <div class="alert-msg">${a.volunteer_id} @ ${a.acupoint_id}: ${a.message}</div>
-                <div class="alert-meta">${t.toLocaleTimeString()} · 值: ${a.value.toFixed(2)} · 阈值: ${a.threshold}</div>
-            `;
+            el.innerHTML = `<div class="alert-type">${a.alert_type}</div><div class="alert-msg">${a.volunteer_id} @ ${a.acupoint_id}: ${a.message}</div><div class="alert-meta">${t.toLocaleTimeString()} · 值: ${a.value.toFixed(2)} · 阈值: ${a.threshold}</div>`;
             this.dom.alertList.appendChild(el);
         }
     }
 
     _bindEvents() {
-        document.getElementById('show-meridians').onchange = (e) => this.renderer.setOptions({ showMeridians: e.target.checked });
-        document.getElementById('show-labels').onchange = (e) => this.renderer.setOptions({ showLabels: e.target.checked });
-        document.getElementById('show-heatmap').onchange = (e) => this.renderer.setOptions({ showHeatmap: e.target.checked });
-        document.getElementById('data-type').onchange = (e) => this.renderer.setOptions({ dataType: e.target.value });
-
+        document.getElementById('show-meridians').onchange = (e) => this.canvas.setOptions({ showMeridians: e.target.checked });
+        document.getElementById('show-labels').onchange = (e) => this.canvas.setOptions({ showLabels: e.target.checked });
+        document.getElementById('show-heatmap').onchange = (e) => this.canvas.setOptions({ showHeatmap: e.target.checked });
+        document.getElementById('data-type').onchange = (e) => this.canvas.setOptions({ dataType: e.target.value });
         this.dom.volunteerSelect.onchange = (e) => { this.volunteerId = e.target.value; };
-
         document.getElementById('btn-start-session').onclick = async () => {
             const sessionId = 'SES-' + Date.now();
             this.currentSession = { volunteerId: this.volunteerId, sessionId };
-            try {
-                await fetch('/api/session/start', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ volunteer_id: this.volunteerId, session_id: sessionId })
-                });
-            } catch (e) {}
-            this._addAlert({
-                id: 'SES-' + Date.now(),
-                timestamp: Date.now(),
-                volunteer_id: this.volunteerId,
-                acupoint_id: '--',
-                alert_type: 'session_start',
-                message: `会话已启动: ${sessionId}`,
-                value: 0, threshold: 0, acknowledged: true
-            });
+            try { await fetch('/api/session/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ volunteer_id: this.volunteerId, session_id: sessionId }) }); } catch (e) {}
+            this._addAlert({ id: 'SES-' + Date.now(), timestamp: Date.now(), volunteer_id: this.volunteerId, acupoint_id: '--', alert_type: 'session_start', message: `会话已启动: ${sessionId}`, value: 0, threshold: 0, acknowledged: true });
         };
-
         document.getElementById('btn-end-session').onclick = async () => {
             if (!this.currentSession) return;
             try {
-                const res = await fetch('/api/session/end', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(this.currentSession)
-                });
+                const res = await fetch('/api/session/end', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.currentSession) });
                 const data = await res.json();
                 alert(`会话结束\n得气强度: ${(data.deqi_intensity*100).toFixed(1)}%\n疼痛缓解率: ${(data.pain_relief_rate*100).toFixed(1)}%\n${data.efficacy_text}`);
-            } catch (e) {
-                alert('会话结束（模拟）\n得气强度: 72.3%\n疼痛缓解率: 68.5%\n针刺评估: 得气显著，疗效佳');
-            }
+            } catch (e) { alert('会话结束（模拟）\n得气强度: 72.3%\n疼痛缓解率: 68.5%\n针刺评估: 得气显著，疗效佳'); }
             this.currentSession = null;
         };
     }
 
     _startClock() {
-        const tick = () => {
-            this.dom.time.textContent = new Date().toLocaleString('zh-CN');
-        };
-        tick();
-        setInterval(tick, 1000);
+        const tick = () => { this.dom.time.textContent = new Date().toLocaleString('zh-CN'); };
+        tick(); setInterval(tick, 1000);
     }
 
     _formatNumber(n) {
@@ -687,77 +310,51 @@ class TCMApplication {
 
     _startSimulatedData() {
         if (this.ws && this.ws.readyState === 1) return;
-
-        const acupointIds = this.acupoints.map(a => a.id);
         let tick = 0;
-
         const inject = () => {
             const t = Date.now();
             const date = new Date(t);
             const timeStr = `${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}:${date.getSeconds().toString().padStart(2,'0')}`;
-
-            const sampleCount = 4;
-            for (let i = 0; i < sampleCount; i++) {
+            for (let i = 0; i < 4; i++) {
                 const ap = this.acupoints[Math.floor(Math.random() * this.acupoints.length)];
                 const isPost = Math.random() < 0.3;
                 const baseCond = 6 + Math.random() * 14;
                 const data = {
-                    volunteer_id: this.volunteerId || 'V001',
-                    acupoint_id: ap.id,
-                    meridian_id: ap.meridian_id,
-                    timestamp: t,
+                    volunteer_id: this.volunteerId || 'V001', acupoint_id: ap.id, meridian_id: ap.meridian_id, timestamp: t,
                     skin_conductance: baseCond * (isPost ? 1.4 : 1) + (Math.random() - 0.5) * 2,
                     skin_conductance_prev: baseCond + (Math.random() - 0.5) * 1,
                     infrared_temperature: 36.2 + Math.random() * 1.2 + (isPost ? 0.2 : 0),
                     emg_amplitude: 15 + Math.random() * 35 + (isPost ? 20 : 0),
                     emg_frequency: 50 + Math.random() * 20 + (isPost ? 15 : 0),
-                    is_post_acupuncture: isPost,
-                    session_id: this.currentSession?.sessionId || 'SIM-001'
+                    is_post_acupuncture: isPost, session_id: this.currentSession?.sessionId || 'SIM-001'
                 };
-
                 if (!this.history[ap.id]) this.history[ap.id] = [];
                 this.history[ap.id].push({ ...data, time: timeStr });
                 if (this.history[ap.id].length > this.maxHistory) this.history[ap.id].shift();
-                this.renderer.updateSensorData(ap.id, data);
-
+                this.canvas.updateSensorData(ap.id, data);
                 this.packetCount++;
             }
-
             this.dom.packetCount.textContent = this._formatNumber(this.packetCount);
-
-            if (apIdsIncludes(this.selectedAcupoint)) {
-                this._updateChartsData();
-            }
+            this._scheduleChartUpdate();
             this._updateMetrics();
-
             tick++;
             if (tick % 80 === 0) {
                 const alertTypes = [
-                    { type: 'conductance_drop', msg: '皮肤电导突降42%', val: 42, thr: 30, cls: '' },
-                    { type: 'temperature_high', msg: '体温异常 38.7℃', val: 38.7, thr: 38, cls: 'warn' },
-                    { type: 'emg_anomaly', msg: '肌电信号异常波动', val: 3.8, thr: 3, cls: 'info' }
+                    { type: 'conductance_drop', msg: '皮肤电导突降42%', val: 42, thr: 30 },
+                    { type: 'temperature_high', msg: '体温异常 38.7℃', val: 38.7, thr: 38 },
+                    { type: 'emg_anomaly', msg: '肌电信号异常波动', val: 3.8, thr: 3 }
                 ];
                 const at = alertTypes[Math.floor(Math.random() * alertTypes.length)];
                 this._addAlert({
-                    id: 'ALERT-' + Date.now(),
-                    timestamp: Date.now(),
+                    id: 'ALERT-' + Date.now(), timestamp: Date.now(),
                     volunteer_id: 'V' + String(Math.floor(Math.random() * 30) + 1).padStart(3, '0'),
-                    acupoint_id: acupointIds[Math.floor(Math.random() * acupointIds.length)],
-                    alert_type: at.type,
-                    message: at.msg,
-                    value: at.val,
-                    threshold: at.thr,
-                    acknowledged: false
+                    acupoint_id: this.acupoints[Math.floor(Math.random() * this.acupoints.length)].id,
+                    alert_type: at.type, message: at.msg, value: at.val, threshold: at.thr, acknowledged: false
                 });
             }
         };
-
-        function apIdsIncludes(_) { return true; }
-
         setInterval(inject, 120);
     }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-    window.app = new TCMApplication();
-});
+window.addEventListener('DOMContentLoaded', () => { window.app = new TCMApplication(); });
