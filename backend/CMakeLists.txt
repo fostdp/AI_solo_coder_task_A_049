@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.14)
+project(tcm_backend CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(OpenSSL REQUIRED)
+find_package(Threads REQUIRED)
 
 set(BACKEND_SOURCES
     src/main_crow.cpp
@@ -20,6 +25,8 @@ add_executable(tcm_backend ${BACKEND_SOURCES})
 
 target_include_directories(tcm_backend PRIVATE
     ${CMAKE_SOURCE_DIR}/third_party/crow/include
+    ${CMAKE_SOURCE_DIR}/backend/include
+    ${CMAKE_SOURCE_DIR}/backend/shared/include
     ${OPENSSL_INCLUDE_DIR}
 )
 
@@ -31,3 +38,5 @@ target_link_libraries(tcm_backend PRIVATE
 if(WIN32)
     target_link_libraries(tcm_backend PRIVATE ws2_32 mswsock)
 endif()
+
+add_subdirectory(services)
