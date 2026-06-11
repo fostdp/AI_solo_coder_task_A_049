@@ -1,0 +1,55 @@
+services:
+  ingest:
+    host: "0.0.0.0"
+    http_port: 8080
+    ble_udp_port: 8081
+  predictor:
+    host: "0.0.0.0"
+    http_port: 8082
+  topology:
+    host: "0.0.0.0"
+    http_port: 8083
+  alerter:
+    host: "0.0.0.0"
+    http_port: 8084
+
+mongodb:
+  uri: "mongodb://localhost:27017"
+  db_name: "tcm_acupuncture"
+  batch_size: 1000
+  flush_interval_ms: 50
+  max_queue_size: 100000
+
+ble:
+  reconnect_initial_delay_ms: 1000
+  reconnect_max_delay_ms: 32000
+  reconnect_backoff: 2.0
+  heartbeat_interval_ms: 5000
+  heartbeat_timeout_ms: 12000
+  offline_cache_max: 10000
+
+predictor:
+  model_path: "./rf_model.bin"
+  num_trees: 50
+  max_depth: 15
+  min_samples_split: 5
+  use_volunteer_normalization: true
+  use_group_kfold: true
+
+alerter:
+  conductance_drop_threshold: 30.0
+  temperature_high: 38.0
+  temperature_low: 35.0
+  window_size: 50
+  dingtalk_webhook_url: ""
+  dingtalk_secret: ""
+  dingtalk_enabled: false
+
+simulator:
+  server_host: "127.0.0.1"
+  udp_port: 8081
+  http_url: "http://127.0.0.1:8080"
+  num_volunteers: 30
+  interval_ms: 100
+  inject_anomalies: true
+  anomaly_probability: 0.005
