@@ -2,6 +2,7 @@
 #include <iostream>
 #include <sstream>
 #include <algorithm>
+#include <chrono>
 
 #if __has_include(<mongocxx/client.hpp>)
 #define HAS_MONGOCXX 1
@@ -11,6 +12,7 @@
 #include <mongocxx/database.hpp>
 #include <mongocxx/collection.hpp>
 #include <mongocxx/exception/exception.hpp>
+#include <mongocxx/options/insert.hpp>
 #include <bsoncxx/json.hpp>
 #include <bsoncxx/builder/stream/document.hpp>
 #include <bsoncxx/builder/stream/array.hpp>
@@ -66,6 +68,15 @@ bool MongoDBManager::initialize(const std::string& uri, const std::string& db_na
                          << bsoncxx::builder::stream::finalize;
         admin_db.run_command(ping_cmd.view());
         std::cout << "[MongoDB] Ping成功" << std::endl;
+
+        enable_timeseries_collection();
+        enable_sharding();
+        ensure_indexes();
+
+        running_ = true;
+        batch_worker_ = std::thread([this]() { batch_worker_loop(); });
+        std::cout << "[MongoDB] 批量写入工作线程已启动" << std::endl;
+
         return true;
     } catch (const std::exception& e) {
         std::cerr << "[MongoDB] 连接失败: " << e.what() << "，使用内存模式" << std::endl;
@@ -74,10 +85,18 @@ bool MongoDBManager::initialize(const std::string& uri, const std::string& db_na
 
     std::cout << "[MongoDB] 使用内存模式 (未找到mongocxx)" << std::endl;
     initialized_ = true;
+    running_ = true;
+    batch_worker_ = std::thread([this]() { batch_worker_loop(); });
     return true;
 }
 
 void MongoDBManager::shutdown() {
+    running_ = false;
+    queue_cv_.notify_all();
+    if (batch_worker_.joinable()) batch_worker_.join();
+
+    flush_queued_data();
+
     std::lock_guard<std::mutex> lk(mutex_);
     if (!initialized_) return;
 #if HAS_MONGOCXX
@@ -86,35 +105,156 @@ void MongoDBManager::shutdown() {
 #endif
     impl_->connected = false;
     initialized_ = false;
+
+    std::cout << "[MongoDB] 已关闭，累计写入 " << total_inserted_.load() << " 条，共 "
+              << total_batches_.load() << " 个批次" << std::endl;
+}
+
+void MongoDBManager::set_batch_policy(const BatchPolicy& policy) {
+    std::lock_guard<std::mutex> lk(queue_mutex_);
+    batch_policy_ = policy;
+}
+
+void MongoDBManager::queue_sensor_data(const SensorData& data) {
+    if (!initialized_) return;
+    {
+        std::unique_lock<std::mutex> lk(queue_mutex_);
+        if (data_queue_.size() >= batch_policy_.max_queue_size) {
+            static uint64_t drop_cnt = 0;
+            if ((++drop_cnt) % 1000 == 0) {
+                std::cerr << "[MongoDB] 队列已满，已丢弃 " << drop_cnt << " 条数据" << std::endl;
+            }
+            return;
+        }
+        data_queue_.push(data);
+    }
+    queue_cv_.notify_one();
+}
+
+void MongoDBManager::flush_queued_data() {
+    std::vector<SensorData> batch;
+    {
+        std::lock_guard<std::mutex> lk(queue_mutex_);
+        batch.reserve(data_queue_.size());
+        while (!data_queue_.empty()) {
+            batch.push_back(data_queue_.front());
+            data_queue_.pop();
+        }
+    }
+    if (!batch.empty()) {
+        insert_sensor_data_batch(batch);
+    }
+}
+
+void MongoDBManager::batch_worker_loop() {
+    using namespace std::chrono;
+    auto last_flush = steady_clock::now();
+
+    while (running_) {
+        std::vector<SensorData> batch;
+        {
+            std::unique_lock<std::mutex> lk(queue_mutex_);
+            auto now = steady_clock::now();
+            auto elapsed = duration_cast<milliseconds>(now - last_flush).count();
+
+            if (!data_queue_.empty() &&
+                (data_queue_.size() >= batch_policy_.max_batch_size ||
+                 elapsed >= batch_policy_.flush_interval_ms)) {
+
+                size_t take = std::min(data_queue_.size(), batch_policy_.max_batch_size);
+                batch.reserve(take);
+                for (size_t i = 0; i < take; i++) {
+                    batch.push_back(data_queue_.front());
+                    data_queue_.pop();
+                }
+            } else if (data_queue_.empty()) {
+                queue_cv_.wait_for(lk, milliseconds(batch_policy_.flush_interval_ms));
+                continue;
+            } else {
+                auto remain = batch_policy_.flush_interval_ms - elapsed;
+                if (remain > 0) {
+                    queue_cv_.wait_for(lk, milliseconds(remain));
+                }
+                continue;
+            }
+        }
+
+        if (!batch.empty()) {
+            last_flush = steady_clock::now();
+            if (insert_sensor_data_batch(batch)) {
+                total_inserted_ += batch.size();
+                total_batches_ += 1;
+                batch_sum_ += batch.size();
+            }
+        }
+    }
+
+    flush_queued_data();
+}
+
+MongoDBManager::Stats MongoDBManager::get_stats() const {
+    Stats s;
+    s.total_inserted = total_inserted_.load();
+    {
+        std::lock_guard<std::mutex> lk(queue_mutex_);
+        s.queue_size = data_queue_.size();
+    }
+    s.total_batches = total_batches_.load();
+    s.avg_batch_size = s.total_batches > 0 ? (double)batch_sum_.load() / s.total_batches : 0.0;
+    return s;
 }
 
 bool MongoDBManager::insert_sensor_data(const SensorData& data) {
-    if (!initialized_) return false;
-#if HAS_MONGOCXX
-    if (!impl_->connected) return false;
-    try {
-        auto coll = impl_->db["sensor_data"];
-        bsoncxx::builder::stream::document doc;
-        doc << "volunteer_id" << data.volunteer_id
-            << "acupoint_id" << data.acupoint_id
-            << "meridian_id" << data.meridian_id
-            << "timestamp" << (int64_t)data.timestamp
-            << "skin_conductance" << data.skin_conductance
-            << "skin_conductance_prev" << data.skin_conductance_prev
-            << "infrared_temperature" << data.infrared_temperature
-            << "emg_amplitude" << data.emg_amplitude
-            << "emg_frequency" << data.emg_frequency
-            << "is_post_acupuncture" << data.is_post_acupuncture
-            << "session_id" << data.session_id;
-        coll.insert_one(doc << bsoncxx::builder::stream::finalize);
-        return true;
-    } catch (...) {}
-#endif
+    queue_sensor_data(data);
     return true;
 }
 
+static auto build_sensor_doc(const SensorData& data) {
+    using namespace bsoncxx::builder::stream;
+    auto doc = document{};
+    doc << "volunteer_id" << data.volunteer_id
+        << "acupoint_id" << data.acupoint_id
+        << "meridian_id" << data.meridian_id
+        << "timestamp" << (int64_t)data.timestamp
+        << "skin_conductance" << data.skin_conductance
+        << "skin_conductance_prev" << data.skin_conductance_prev
+        << "infrared_temperature" << data.infrared_temperature
+        << "emg_amplitude" << data.emg_amplitude
+        << "emg_frequency" << data.emg_frequency
+        << "is_post_acupuncture" << data.is_post_acupuncture
+        << "session_id" << data.session_id
+        << "metadata" << open_document
+            << "volunteer_id" << data.volunteer_id
+            << "acupoint_id" << data.acupoint_id
+            << "meridian_id" << data.meridian_id
+        << close_document;
+    return doc;
+}
+
 bool MongoDBManager::insert_sensor_data_batch(const std::vector<SensorData>& batch) {
-    for (const auto& d : batch) insert_sensor_data(d);
+    if (!initialized_ || batch.empty()) return true;
+#if HAS_MONGOCXX
+    if (!impl_->connected) return true;
+    try {
+        auto coll = impl_->db["sensor_data"];
+        std::vector<bsoncxx::document::value> docs;
+        docs.reserve(batch.size());
+        for (const auto& d : batch) {
+            docs.push_back(build_sensor_doc(d) << bsoncxx::builder::stream::finalize);
+        }
+        mongocxx::options::insert opts;
+        opts.ordered(false);
+        auto result = coll.insert_many(docs, opts);
+        if (result) {
+            return true;
+        }
+    } catch (const std::exception& e) {
+        static int err_cnt = 0;
+        if ((++err_cnt) % 100 == 0) {
+            std::cerr << "[MongoDB] 批量写入异常: " << e.what() << std::endl;
+        }
+    }
+#endif
     return true;
 }
 
@@ -138,6 +278,7 @@ std::vector<SensorData> MongoDBManager::query_sensor_data(
         mongocxx::options::find opts;
         opts.sort(bsoncxx::builder::stream::document{} << "timestamp" << 1 << bsoncxx::builder::stream::finalize);
         opts.limit(limit);
+        opts.read_preference(mongocxx::read_preference::read_preference::nearest());
 
         auto cursor = coll.find(query << bsoncxx::builder::stream::finalize, opts);
         for (auto&& doc : cursor) {
@@ -162,6 +303,57 @@ std::vector<SensorData> MongoDBManager::query_sensor_data(
     } catch (...) {}
 #endif
     return result;
+}
+
+bool MongoDBManager::enable_timeseries_collection() {
+#if HAS_MONGOCXX
+    if (!impl_->connected) return false;
+    try {
+        auto cmd = bsoncxx::builder::stream::document{}
+            << "create" << "sensor_data"
+            << "timeseries" << bsoncxx::builder::stream::open_document
+                << "timeField" << "timestamp"
+                << "metaField" << "metadata"
+                << "granularity" << "milliseconds"
+            << bsoncxx::builder::stream::close_document
+            << bsoncxx::builder::stream::finalize;
+        impl_->db.run_command(cmd.view());
+        std::cout << "[MongoDB] 时序集合 sensor_data 创建成功" << std::endl;
+        return true;
+    } catch (const std::exception& e) {
+        std::cout << "[MongoDB] 时序集合已存在或创建跳过: " << e.what() << std::endl;
+    }
+#endif
+    return false;
+}
+
+bool MongoDBManager::enable_sharding() {
+#if HAS_MONGOCXX
+    if (!impl_->connected) return false;
+    try {
+        auto admin = (*impl_->client)["admin"];
+
+        auto enable_shard = bsoncxx::builder::stream::document{}
+            << "enableSharding" << impl_->db_name
+            << bsoncxx::builder::stream::finalize;
+        try { admin.run_command(enable_shard.view()); } catch (...) {}
+
+        auto shard_coll = bsoncxx::builder::stream::document{}
+            << "shardCollection" << (impl_->db_name + ".sensor_data")
+            << "key" << bsoncxx::builder::stream::open_document
+                << "metadata.volunteer_id" << "hashed"
+            << bsoncxx::builder::stream::close_document
+            << bsoncxx::builder::stream::finalize;
+        try {
+            auto res = admin.run_command(shard_coll.view());
+            std::cout << "[MongoDB] 分片已启用: volunteer_id 哈希分片" << std::endl;
+            return true;
+        } catch (const std::exception& e) {
+            std::cout << "[MongoDB] 分片跳过(可能非分片集群): " << e.what() << std::endl;
+        }
+    } catch (...) {}
+#endif
+    return false;
 }
 
 bool MongoDBManager::insert_efficacy_record(const EfficacyRecord& record) {
@@ -411,12 +603,35 @@ bool MongoDBManager::ensure_indexes() {
     if (!impl_->connected) return false;
     try {
         auto sensor = impl_->db["sensor_data"];
-        sensor.create_index(bsoncxx::builder::stream::document{}
-            << "volunteer_id" << 1 << "acupoint_id" << 1 << "timestamp" << 1
-            << bsoncxx::builder::stream::finalize);
+        auto create_idx = [&](auto&& doc, const std::string& name) {
+            try {
+                sensor.create_index(doc, mongocxx::options::index{}.name(name));
+            } catch (...) {}
+        };
+        using bsoncxx::builder::stream::document;
+        using bsoncxx::builder::stream::finalize;
+        create_idx(document{} << "metadata.volunteer_id" << 1 << "timestamp" << -1 << finalize,
+                   "idx_volunteer_time_desc");
+        create_idx(document{} << "acupoint_id" << 1 << "timestamp" << -1 << finalize,
+                   "idx_acupoint_time");
+        create_idx(document{} << "session_id" << 1 << finalize,
+                   "idx_session_id");
+
+        try {
+            auto ttl_doc = document{} << "timestamp" << 1 << finalize;
+            mongocxx::options::index ttl_opts;
+            ttl_opts.expire_after(std::chrono::seconds(3600 * 24 * 30));
+            ttl_opts.name("idx_ttl_30days");
+            sensor.create_index(ttl_doc, ttl_opts);
+        } catch (...) {}
+
         auto alerts = impl_->db["alerts"];
-        alerts.create_index(bsoncxx::builder::stream::document{}
-            << "timestamp" << -1 << bsoncxx::builder::stream::finalize);
+        try {
+            alerts.create_index(document{} << "timestamp" << -1 << finalize,
+                                mongocxx::options::index{}.name("idx_alert_time"));
+        } catch (...) {}
+
+        std::cout << "[MongoDB] 索引创建完成" << std::endl;
         return true;
     } catch (...) {}
 #endif

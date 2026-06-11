@@ -4,6 +4,11 @@
 #include <vector>
 #include <mutex>
 #include <memory>
+#include <thread>
+#include <atomic>
+#include <condition_variable>
+#include <queue>
+#include <map>
 
 namespace tcm {
 
@@ -16,6 +21,16 @@ public:
 
     bool insert_sensor_data(const SensorData& data);
     bool insert_sensor_data_batch(const std::vector<SensorData>& data_batch);
+    void queue_sensor_data(const SensorData& data);
+    void flush_queued_data();
+
+    struct BatchPolicy {
+        size_t max_batch_size = 1000;
+        uint32_t flush_interval_ms = 50;
+        size_t max_queue_size = 100000;
+    };
+    void set_batch_policy(const BatchPolicy& policy);
+
     std::vector<SensorData> query_sensor_data(
         const std::string& volunteer_id,
         const std::string& acupoint_id,
@@ -23,6 +38,9 @@ public:
         uint64_t end_time,
         int limit = 10000
     );
+
+    bool enable_timeseries_collection();
+    bool enable_sharding();
 
     bool insert_efficacy_record(const EfficacyRecord& record);
     std::vector<EfficacyRecord> query_efficacy_records(
@@ -52,16 +70,36 @@ public:
 
     bool ensure_indexes();
 
+    struct Stats {
+        uint64_t total_inserted;
+        uint64_t queue_size;
+        uint64_t total_batches;
+        double avg_batch_size;
+    };
+    Stats get_stats() const;
+
 private:
     MongoDBManager();
     ~MongoDBManager();
     MongoDBManager(const MongoDBManager&) = delete;
     MongoDBManager& operator=(const MongoDBManager&) = delete;
 
+    void batch_worker_loop();
+
     struct Impl;
     std::unique_ptr<Impl> impl_;
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     bool initialized_;
+
+    BatchPolicy batch_policy_;
+    std::queue<SensorData> data_queue_;
+    mutable std::mutex queue_mutex_;
+    std::condition_variable queue_cv_;
+    std::thread batch_worker_;
+    std::atomic<bool> running_{false};
+    std::atomic<uint64_t> total_inserted_{0};
+    std::atomic<uint64_t> total_batches_{0};
+    std::atomic<uint64_t> batch_sum_{0};
 };
 
 } // namespace tcm
